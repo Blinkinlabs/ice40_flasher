@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <hardware/gpio.h>
 
 #include "bsp/board.h"
 #include "tusb.h"
@@ -75,19 +76,23 @@ static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
 void led_blinking_task(void);
 
+void pins_init();
+
 /*------------- MAIN -------------*/
 int main(void)
 {
-  board_init();
-  tusb_init();
+    board_init();
+    tusb_init();
 
-  while (1)
-  {
-    tud_task(); // tinyusb device task
-    led_blinking_task();
-  }
+    pins_init();
 
-  return 0;
+    while (1)
+    {
+        tud_task(); // tinyusb device task
+        led_blinking_task();
+    }
+
+    return 0;
 }
 
 //--------------------------------------------------------------------+
@@ -140,6 +145,61 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t
   return 0;
 }
 
+#define PIN_COUNT 23
+#define PIN_MASK ((1<<PIN_COUNT) - 1)
+//#define PIN_MASK (0xFFFFFFFF)
+
+void pins_init() {
+    gpio_init_mask(PIN_MASK);
+
+//    for(int i = 0; i < 23; i++) {
+//        gpio_set_input_enabled(i, true);
+//    }
+}
+
+void spi_bitbang(const uint8_t sck_pin,
+        const uint8_t mosi_pin,
+        const uint8_t miso_pin,
+        const uint32_t bit_count,
+        uint8_t const* buf_out,
+        uint8_t* buf_in) {
+    memset(buf_in, 0, (bit_count + 7)/8);
+
+    for(uint32_t bit_index = 0; bit_index < bit_count; bit_index++) {
+        const int byte_index = bit_index / 8;
+        const uint8_t bit_offset = bit_index % 8;
+
+        gpio_put(mosi_pin, (buf_out[byte_index] << bit_offset) & 0x80);
+        gpio_put(sck_pin, true);
+        sleep_us(1);
+
+        if(gpio_get(miso_pin)) {
+            buf_in[byte_index] |= (1<<(7-bit_offset));
+        }
+
+        gpio_put(sck_pin, false);
+        sleep_us(1);
+    }
+}
+
+uint32_t read_uint32(uint8_t const* buffer) {
+    const uint32_t val = 
+          (*(buffer + 0) << 24)
+        + (*(buffer + 1) << 16)
+        + (*(buffer + 2) << 8)
+        + (*(buffer + 3) << 0);
+    return val;
+}
+
+void write_uint32(uint32_t val, uint8_t* buffer) {
+    buffer[0] = ((val >> 24) & 0xFF);
+    buffer[1] = ((val >> 16) & 0xFF);
+    buffer[2] = ((val >> 8) & 0xFF);
+    buffer[3] = ((val >> 0) & 0xFF);
+}
+
+
+
 // Invoked when received SET_REPORT control request or
 // received data on OUT endpoint ( Report ID = 0, Type = 0 )
 void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const* buffer, uint16_t bufsize)
@@ -149,8 +209,50 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
   (void) report_id;
   (void) report_type;
 
-  // echo back anything we received from host
-  tud_hid_report(0, buffer, bufsize);
+  switch(buffer[0]) {
+    case 0x00:      // set LED
+        board_led_write(buffer[1] & 0x01);
+        break;
+
+    case 0x10:      // pin direction
+        gpio_set_dir_masked(
+            read_uint32(&buffer[1]) & PIN_MASK,
+            read_uint32(&buffer[5]) & PIN_MASK
+            );
+        break;
+    case 0x20:      // set pin values
+        gpio_put_masked(
+            read_uint32(&buffer[1]) & PIN_MASK,
+            read_uint32(&buffer[5]) & PIN_MASK
+            );
+        break;
+    case 0x30:      // read pin values
+        {
+            const uint32_t pin_values = gpio_get_all() & PIN_MASK;
+            uint8_t ret_buffer[5];
+            ret_buffer[0] = 0x30;
+            write_uint32(pin_values, &ret_buffer[1]);
+            tud_hid_report(0, ret_buffer, sizeof(ret_buffer));
+        }
+        break;
+    case 0x40:      // bitbang spi
+        {
+        uint8_t ret_buffer[64];
+        ret_buffer[0] = 0x40;
+        write_uint32(read_uint32(&buffer[4]), &ret_buffer[1]);
+        
+        spi_bitbang(
+            buffer[1],
+            buffer[2],
+            buffer[3],
+            read_uint32(&buffer[4]),
+            &buffer[8],
+            &ret_buffer[5]
+            );
+
+        tud_hid_report(0, ret_buffer, sizeof(ret_buffer));
+        }
+    }
 }
 
 //--------------------------------------------------------------------+
