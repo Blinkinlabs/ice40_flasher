@@ -86,6 +86,23 @@ class ice40_flasher:
         bytes_read = math.ceil(bit_count / 8)
         return msg_in[6:(6+bytes_read)]
 
+    def adc_read_all(self):
+        msg = struct.pack('<BB',
+            0x0,
+            0x50,
+            )
+
+#        print(['{:02x}'.format(b) for b in msg])
+        self.dev.write(msg)
+
+        msg_in = self.dev.read(13)
+#        print(len(msg_in), ['{:02x}'.format(b) for b in msg_in])
+
+        [id, ch0, ch1, ch2] = struct.unpack('>BIII', msg_in)
+        assert(id == 0x50)
+
+        return ch0, ch1, ch2
+
 def test_pin_loopback(flasher, gpioa, gpiob):
 
     flasher.pin_set_direction(gpioa, True)
@@ -162,6 +179,16 @@ def test_spi_50_bytes(flasher):
 flasher = ice40_flasher()
 flasher.led_set(True)
 
+vals = [0,0,0]
+sample_count = 100
+for sample in range(0, sample_count):
+    val = flasher.adc_read_all()
+    vals[0] += val[0]
+    vals[1] += val[1]
+    vals[2] += val[2]
+
+print(['{:.3f}'.format(val/sample_count/1000000) for val in vals])
+exit(0)
 
 # Test program: put a jumper between gpio16 and gpio17
 #gpioa = 16
@@ -170,6 +197,6 @@ flasher.led_set(True)
 
 flasher.pin_set_direction(7, True)
 flasher.pin_put(7, True)
-exit(0)
+
 #test_spi_4_bits(flasher)
 test_spi_50_bytes(flasher)

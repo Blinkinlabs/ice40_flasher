@@ -46,6 +46,7 @@ pico_add_extra_outputs(main)
 # for TinyUSB device support and tinyusb_board for the additional board support library used by the example
 target_link_libraries(main PUBLIC
         pico_stdlib
+        hardware_adc
         tinyusb_device
         tinyusb_board
         )
