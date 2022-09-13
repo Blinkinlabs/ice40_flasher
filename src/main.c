@@ -88,9 +88,6 @@ int main(void)
     pins_init();
 
     adc_init();
-    adc_gpio_init(26);
-    adc_gpio_init(27);
-    adc_gpio_init(28);
 
     while (1)
     {
@@ -151,12 +148,29 @@ uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t
   return 0;
 }
 
-#define PIN_COUNT 23
-#define PIN_MASK ((1<<PIN_COUNT) - 1)
+#define PIN_COUNT 32 // PIN_MASK is 32 bits, so that's the max number of pins available
+#define PIN_MASK (0b00011100011111111111111111111111)
+//#define PIN_MASK ((1<<PIN_COUNT) - 1)
 //#define PIN_MASK (0xFFFFFFFF)
 
 void pins_init() {
     gpio_init_mask(PIN_MASK);
+}
+
+//! @brief Set the pull-up state for the gpios specified in the pinmask
+void set_pulls_masked(
+    const uint32_t mask,
+    const uint32_t ups,
+    const uint32_t downs
+    ) {
+    for(int gpio = 0; gpio < PIN_COUNT; gpio++) {
+        if(!(PIN_MASK & (1<<gpio)))
+            continue;
+
+        if(mask & (1<<gpio)) {
+            gpio_set_pulls(gpio, ups & (1<<gpio), downs & (1<<gpio));
+        }   
+    }
 }
 
 void spi_bitbang(const uint8_t sck_pin,
@@ -185,6 +199,13 @@ void spi_bitbang(const uint8_t sck_pin,
 }
 
 uint32_t adc_sample_input(uint8_t input) {
+    if(input > 3) {
+        return 0;
+    }
+
+    // Configure the GPIO 
+    adc_gpio_init(input+26);
+
     adc_select_input(input);
  
     // 12-bit conversion, assume max value == ADC_VREF == 3.3 V
@@ -231,6 +252,13 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
         gpio_set_dir_masked(
             read_uint32(&buffer[1]) & PIN_MASK,
             read_uint32(&buffer[5]) & PIN_MASK
+            );
+        break;
+    case 0x12:      // set pullups/pulldowns
+        set_pulls_masked(
+            read_uint32(&buffer[1]) & PIN_MASK,
+            read_uint32(&buffer[5]) & PIN_MASK,
+            read_uint32(&buffer[9]) & PIN_MASK
             );
         break;
     case 0x20:      // set pin values

@@ -59,6 +59,19 @@ This command is used to set pin directions. The first field is a mask of pins to
 
 The firmware does not send a response packet.
 
+### Set pin pullup/pulldown resistors
+
+This command is used to set pin pullup/pulldown resistors. The first field is a mask of pins to update, the second is the pull-up states, and the third is the pull-down states. Any pin that has a bit set in the mask will be updated.
+
+| Offset | Length | Description |
+| ---    | ---    | ---         |
+| 0x00   | 1      | ID (0x12)   |
+| 0x01   | 4      | uint32: Pin mask (1=set direction) |
+| 0x05   | 4      | uint32: Pin pullups (1=enable, 0=disable) |
+| 0x09   | 4      | uint32: Pin pulldowns (1=enable, 0=disable) |
+
+The firmware does not send a response packet.
+
 ### Set pin values
 
 This command is used to set the value of output pins. The first field is a mask of pins to update, and the second is a bitmap of new output values to apply. Any pin that has a bit set in the mask will be updated.
@@ -126,5 +139,8 @@ Response packet:
 
 ## Building the firmware
 
-TODO
+export PICO_SDK_PATH=~/pico/pico-sdk
+mkdir build
+cd build
+cmake ..
 
