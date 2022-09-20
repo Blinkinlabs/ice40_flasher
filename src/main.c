@@ -270,7 +270,9 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
     case 0x30:      // read pin values
         {
             const uint32_t pin_values = gpio_get_all() & PIN_MASK;
-            uint8_t ret_buffer[1+4];
+            //uint8_t ret_buffer[1+4];
+            uint8_t ret_buffer[64];
+            memset(ret_buffer,0,sizeof(ret_buffer));
             ret_buffer[0] = 0x30;
             write_uint32(pin_values, &ret_buffer[1]);
             tud_hid_report(0, ret_buffer, sizeof(ret_buffer));
@@ -295,7 +297,9 @@ void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t rep
         }
     case 0x50:      // Read ADCs
         {
-            uint8_t ret_buffer[1+3*4];
+            //uint8_t ret_buffer[1+3*4];
+            uint8_t ret_buffer[64];
+            memset(ret_buffer,0,sizeof(ret_buffer));
             ret_buffer[0] = 0x50;
             write_uint32(adc_sample_input(0), &ret_buffer[1]);
             write_uint32(adc_sample_input(1), &ret_buffer[5]);
