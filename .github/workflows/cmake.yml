@@ -36,6 +36,14 @@ jobs:
       working-directory: ${{github.workspace}}/ice40_flasher
       run:  cmake -E make_directory ${{github.workspace}}/ice40_flasher/build
 
+    - name: print stuff
+      working-directory: ${{github.workspace}}/ice40_flasher/build
+      run: ls ../../
+
+    - name: print stuff
+      working-directory: ${{github.workspace}}/ice40_flasher/build
+      run: ls ../../../
+
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
       # access regardless of the host operating system
