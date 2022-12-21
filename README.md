@@ -141,17 +141,18 @@ Response packet:
 
 First, install the [Rasberry Pi Pico SDK](https://github.com/raspberrypi/pico-sdk.git):
 
-  sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
-  cd ~
-  git clone https://github.com/raspberrypi/pico-sdk.git
+    sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+    cd ~
+    git clone https://github.com/raspberrypi/pico-sdk.git
 
 Then, clone and build this repository:
 
-  cd ~
-  git clone https://github.com/Blinkinlabs/ice40_flasher
-  cd ice40_flasher
-  export PICO_SDK_PATH=~/pico/pico-sdk
-  mkdir build
-  cd build
-  cmake ..
+    cd ~
+    git clone https://github.com/Blinkinlabs/ice40_flasher
+    cd ice40_flasher
+    export PICO_SDK_PATH=~/pico/pico-sdk
+    mkdir build
+    cd build
+    cmake ..
 
+Finally, load the firmware onto the Pico using the instructions in the [usage](https://github.com/Blinkinlabs/ice40_flasher#usage) section.
