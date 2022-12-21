@@ -38,11 +38,15 @@ jobs:
 
     - name: print stuff
       working-directory: ${{github.workspace}}/ice40_flasher/build
-      run: ls ../../pico-sdk
+      run: PICO_SDK_PATH=../../pico-sdk echo ${PICO_SDK_PATH}
 
     - name: print stuff
       working-directory: ${{github.workspace}}/ice40_flasher/build
-      run: ls ../../pico-sdk/external
+      run: PICO_SDK_PATH=../../pico-sdk ls ${PICO_SDK_PATH}
+
+    - name: print stuff
+      working-directory: ${{github.workspace}}/ice40_flasher/build
+      run: PICO_SDK_PATH=../../pico-sdk ls ${PICO_SDK_PATH}/external
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
