@@ -15,12 +15,12 @@ jobs:
       run: sudo apt-get -y install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
 
     - name: Checkout ice40_flasher
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         path: ice40_flasher
 
     - name: Checkout pico-sdk/develop
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: raspberrypi/pico-sdk
         ref: develop
@@ -35,10 +35,6 @@ jobs:
       # We'll use this as our working directory for all subsequent commands
       working-directory: ${{github.workspace}}/ice40_flasher
       run:  cmake -E make_directory ${{github.workspace}}/ice40_flasher/build
-
-    - name: print stuff
-      run:  ls ${{github.workspace}}/pico-sdk
-
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
