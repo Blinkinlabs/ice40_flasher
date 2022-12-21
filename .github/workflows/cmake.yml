@@ -55,3 +55,8 @@ jobs:
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config $BUILD_TYPE --parallel ${{steps.core_count.outputs.output}}
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: main.uf2
+        path: ${{github.workspace}}/ice40_flasher/build/main.uf2
