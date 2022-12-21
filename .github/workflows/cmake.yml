@@ -37,7 +37,7 @@ jobs:
       run:  cmake -E make_directory ${{github.workspace}}/ice40_flasher/build
 
     - name: print stuff
-      run:  ls ${{github.workspace}}/pico_sdk
+      run:  ls ${{github.workspace}}/pico-sdk
 
 
     - name: Configure CMake
