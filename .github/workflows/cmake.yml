@@ -37,16 +37,8 @@ jobs:
       run:  cmake -E make_directory ${{github.workspace}}/ice40_flasher/build
 
     - name: print stuff
-      working-directory: ${{github.workspace}}/ice40_flasher/build
-      run: PICO_SDK_PATH=../../pico-sdk echo ${PICO_SDK_PATH}
+      run:  ls ${{github.workspace}}/pico_sdk
 
-    - name: print stuff
-      working-directory: ${{github.workspace}}/ice40_flasher/build
-      run: PICO_SDK_PATH=../../pico-sdk ls ${PICO_SDK_PATH}
-
-    - name: print stuff
-      working-directory: ${{github.workspace}}/ice40_flasher/build
-      run: PICO_SDK_PATH=../../pico-sdk ls ${PICO_SDK_PATH}/external
 
     - name: Configure CMake
       # Use a bash shell so we can use the same syntax for environment variable
@@ -56,7 +48,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+      run: PICO_SDK_PATH=${{github.workspace}}/pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE
 
     - name: Get core count
       id: core_count
