@@ -151,7 +151,7 @@ void set_pulls_masked(
     }
 }
 
-#define SPI_BITBANG_MAX_TRANSFER_SIZE 56
+#define SPI_BITBANG_MAX_TRANSFER_SIZE (1024-8)
 
 void spi_bitbang(const uint8_t sck_pin,
                  const uint8_t mosi_pin,
@@ -169,12 +169,11 @@ void spi_bitbang(const uint8_t sck_pin,
 
     for (uint32_t bit_index = 0; bit_index < bit_count; bit_index++)
     {
-        const int byte_index = bit_index / 8;
+        const uint32_t byte_index = bit_index / 8;
         const uint8_t bit_offset = bit_index % 8;
 
         gpio_put(mosi_pin, (buf_out[byte_index] << bit_offset) & 0x80);
         gpio_put(sck_pin, true);
-        // sleep_us(1);
 
         if (gpio_get(miso_pin))
         {
@@ -182,7 +181,6 @@ void spi_bitbang(const uint8_t sck_pin,
         }
 
         gpio_put(sck_pin, false);
-        // sleep_us(1);
     }
 }
 
@@ -231,8 +229,8 @@ typedef enum
     FLASHER_REQUEST_ADC_READ = 0x50
 } flasher_request_t;
 
-uint8_t out_buffer[64];
-uint8_t in_buffer[64];
+uint8_t out_buffer[1024];
+uint8_t in_buffer[1024];
 uint8_t bitbang_in_buffer[SPI_BITBANG_MAX_TRANSFER_SIZE];
 
 // Invoked when a control transfer occurred on an interface of this class
@@ -277,26 +275,17 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
         // FLASHER_REQUEST_LED_SET = 0x00,
 
         case FLASHER_REQUEST_PIN_DIRECTION_SET:
-            return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, (2*4));
-            break;
-
         case FLASHER_REQUEST_PULLUPS_SET:
-            return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, (3*4));
-            break;
-
         case FLASHER_REQUEST_PIN_VALUES_SET:
-            return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, (2*4));
-            break;
-
         case FLASHER_REQUEST_SPI_BITBANG:
-            return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, (64));
+            return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, sizeof(out_buffer));
             break;
 
         default:
             break;
         }
     }
-    else if ((stage == CONTROL_STAGE_DATA) && (request->bmRequestType_bit.direction == 0))
+    else if ((stage == CONTROL_STAGE_ACK) && (request->bmRequestType_bit.direction == 0))
     { // Host to device (OUT): Handle data
         switch (request->bRequest)
         {
