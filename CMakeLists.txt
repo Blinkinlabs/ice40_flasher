@@ -18,8 +18,6 @@ set(PICO_EXAMPLES_PATH ${PROJECT_SOURCE_DIR})
 # Initialize the SDK
 pico_sdk_init()
 
-include(example_auto_set_url.cmake)
-
 add_compile_options(-Wall
         -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
         -Wno-unused-function # we have some for the docs that aren't called
@@ -38,8 +36,6 @@ target_include_directories(main PUBLIC
         src
         )
 
-#pico_enable_stdio_uart(main 1)
-
 pico_add_extra_outputs(main)
 
 # In addition to pico_stdlib required for common PicoSDK functionality, add dependency on tinyusb_device
@@ -52,4 +48,5 @@ target_link_libraries(main PUBLIC
         )
 
 # add url via pico_set_program_url
-example_auto_set_url(main)
+pico_set_program_name(main "ice40 flasher")
+pico_set_program_url(main "https://github.com/blinkinlabs/ice40_flasher")
