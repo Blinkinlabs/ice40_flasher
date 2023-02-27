@@ -28,7 +28,7 @@
 #include <string.h>
 #include <hardware/gpio.h>
 #include <hardware/adc.h>
-
+#include "pico/bootrom.h"
 #include "bsp/board.h"
 #include "tusb.h"
 
@@ -226,7 +226,8 @@ typedef enum
     FLASHER_REQUEST_PIN_VALUES_SET = 0x20,
     FLASHER_REQUEST_PIN_VALUES_GET = 0x30,
     FLASHER_REQUEST_SPI_BITBANG = 0x40,
-    FLASHER_REQUEST_ADC_READ = 0x50
+    FLASHER_REQUEST_ADC_READ = 0x50,
+    FLASHER_REQUEST_BOOTLOADER = 0xFF
 } flasher_request_t;
 
 uint8_t out_buffer[1024];
@@ -280,6 +281,12 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
         case FLASHER_REQUEST_SPI_BITBANG:
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, sizeof(out_buffer));
             break;
+
+	case FLASHER_REQUEST_BOOTLOADER:
+            reset_usb_boot(0,0);
+            return true;
+            break;
+
 
         default:
             break;

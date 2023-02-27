@@ -11,6 +11,7 @@ class ice40_flasher:
     FLASHER_REQUEST_PIN_VALUES_GET = 0x30
     FLASHER_REQUEST_SPI_BITBANG = 0x40
     FLASHER_REQUEST_ADC_READ = 0x50
+    FLASHER_REQUEST_BOOTLOADER = 0xFF
 
     def __init__(self):
 #        self.dev = None
@@ -213,10 +214,21 @@ class ice40_flasher:
 
         return ch0/1000000, ch1/1000000, ch2/1000000
 
+    def bootloader(self):
+        """Reset to the RP2040 USB bootloader"""
+        try:
+            self._write(self.FLASHER_REQUEST_BOOTLOADER,bytes(1))
+        except usb.core.USBError as e:
+            pass
+
+
 if __name__ == '__main__':
     flasher = ice40_flasher()
     print(flasher.gpio_get_all())
     print(flasher.adc_read_all())
+
+    flasher.bootloader()
+    exit(0)
 
     # for pin in range(10,13):
     #    flasher.gpio_set_direction(pin, True)
@@ -242,5 +254,4 @@ if __name__ == '__main__':
     msg.extend(buf)
 
     while True:
-        
         flasher.spi_bitbang_inner(sck_pin=10, mosi_pin=11, miso_pin=13, buf=buf)
