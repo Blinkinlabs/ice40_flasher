@@ -104,25 +104,6 @@ void tud_resume_cb(void)
     blink_interval_ms = BLINK_MOUNTED;
 }
 
-//--------------------------------------------------------------------+
-// USB HID
-//--------------------------------------------------------------------+
-
-// // Invoked when received GET_REPORT control request
-// // Application must fill buffer report's content and return its length.
-// // Return zero will cause the stack to STALL request
-// uint16_t tud_hid_get_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t* buffer, uint16_t reqlen)
-// {
-//   // TODO not Implemented
-//   (void) itf;
-//   (void) report_id;
-//   (void) report_type;
-//   (void) buffer;
-//   (void) reqlen;
-
-//   return 0;
-// }
-
 #define PIN_COUNT 32 // PIN_MASK is 32 bits, so that's the max number of pins available
 #define PIN_MASK (0b00011100011111111111111111111111)
 // #define PIN_MASK ((1<<PIN_COUNT) - 1)
@@ -230,6 +211,19 @@ typedef enum
     FLASHER_REQUEST_BOOTLOADER = 0xFF
 } flasher_request_t;
 
+static const uint8_t microsoft_os_compatible_id_desc[] = {
+	40, 0, 0, 0, // total length, 16 header + 24 function * 1
+	0, 1, // Version 1
+	4, 0, // Extended compatibility ID descriptor index
+	1, // Number of function sections
+	0, 0, 0, 0, 0, 0, 0, // Reserved
+	0, // Interface number
+	1, // Reserved
+	'W','I','N','U','S','B',0,0, // compatibleID
+	0,0,0,0,0,0,0,0,             // subCompatibleID
+	0,0,0,0,0,0 // Reserved
+};
+
 uint8_t out_buffer[1024];
 uint8_t in_buffer[1024];
 uint8_t bitbang_in_buffer[SPI_BITBANG_MAX_TRANSFER_SIZE];
@@ -249,6 +243,19 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 
         switch (request->bRequest)
         {
+	case 0xF8:
+		// TODO: Check index
+            memcpy(in_buffer,
+			    microsoft_os_compatible_id_desc,
+			    sizeof(microsoft_os_compatible_id_desc)
+			    );
+            return tud_control_xfer(rhport,
+			    request,
+			    (void *)(uintptr_t)in_buffer,
+			    sizeof(microsoft_os_compatible_id_desc)
+			    );
+            break;
+
         case FLASHER_REQUEST_PIN_VALUES_GET:
             write_uint32(gpio_get_all() & PIN_MASK, &in_buffer[0]);
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)in_buffer, 4);
@@ -345,59 +352,6 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     // stall unknown request
     return false;
 }
-
-// // Invoked when received SET_REPORT control request or
-// // received data on OUT endpoint ( Report ID = 0, Type = 0 )
-// void tud_hid_set_report_cb(uint8_t itf, uint8_t report_id, hid_report_type_t report_type, uint8_t const* buffer, uint16_t bufsize)
-// {
-//   // This example doesn't use multiple report and report ID
-//   (void) itf;
-//   (void) report_id;
-//   (void) report_type;
-
-//   switch(buffer[0]) {
-//     case FLASHER_REQUEST_LED_SET:      // set LED
-//         board_led_write(buffer[1] & 0x01);
-//         break;
-
-//     case FLASHER_REQUEST_PIN_DIRECTION_SET:      // pin direction
-//         gpio_set_dir_masked(
-//             read_uint32(&buffer[1]) & PIN_MASK,
-//             read_uint32(&buffer[5]) & PIN_MASK
-//             );
-//         break;
-//     case FLASHER_REQUEST_PULLUPS_SET:      // set pullups/pulldowns
-//         set_pulls_masked(
-//             read_uint32(&buffer[1]) & PIN_MASK,
-//             read_uint32(&buffer[5]) & PIN_MASK,
-//             read_uint32(&buffer[9]) & PIN_MASK
-//             );
-//         break;
-//     case FLASHER_REQUEST_PIN_VALUES_SET:      // set pin values
-//         gpio_put_masked(
-//             read_uint32(&buffer[1]) & PIN_MASK,
-//             read_uint32(&buffer[5]) & PIN_MASK
-//             );
-//         break;
-//     case FLASHER_REQUEST_SPI_BITBANG:      // bitbang spi
-//         {
-//             uint8_t ret_buffer[64];
-//             ret_buffer[0] = 0x40;
-//             write_uint32(read_uint32(&buffer[4]), &ret_buffer[1]);
-
-//             spi_bitbang(
-//                 buffer[1],
-//                 buffer[2],
-//                 buffer[3],
-//                 read_uint32(&buffer[4]),
-//                 &buffer[8],
-//                 &ret_buffer[5]
-//                 );
-
-//             tud_hid_report(0, ret_buffer, sizeof(ret_buffer));
-//         }
-//     }
-// }
 
 //--------------------------------------------------------------------+
 // BLINKING TASK

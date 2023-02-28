@@ -112,12 +112,19 @@ uint8_t const * tud_descriptor_configuration_cb(uint8_t index)
 char const* string_desc_arr [] =
 {
   (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
-//  "TinyUSB",                     // 1: Manufacturer
-//  "TinyUSB Device",              // 2: Product
   "Blinkinlabs",                 // 1: Manufacturer
   "ICE40 programmer",            // 2: Product
   "123456",                      // 3: Serials, should use chip ID
 };
+
+static const uint8_t microsoft_os_string_desc[18] = {
+	18, // Descriptor length
+	3, // Descriptor type
+	'M', 0, 'S', 0, 'F', 0, 'T', 0, '1', 0, '0', 0, '0', 0, // Signature field 'MSFT100'
+	0xF8, // GET_MS_DESCRIPTOR will use bRequest=0xF8
+	0 // Pad field
+};
+
 
 static uint16_t _desc_str[32];
 
@@ -129,15 +136,18 @@ uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 
   uint8_t chr_count;
 
-  if ( index == 0)
+  if ( index == 0xEE) {
+    // Note: the 0xEE index string is a Microsoft OS 1.0 Descriptors.
+    // https://docs.microsoft.com/en-us/windows-hardware/drivers/usbcon/microsoft-defined-usb-descriptors
+    memcpy(_desc_str, microsoft_os_string_desc, sizeof(microsoft_os_string_desc));
+    return _desc_str;
+  }
+  else if ( index == 0)
   {
     memcpy(&_desc_str[1], string_desc_arr[0], 2);
     chr_count = 1;
-  }else
-  {
-    // Note: the 0xEE index string is a Microsoft OS 1.0 Descriptors.
-    // https://docs.microsoft.com/en-us/windows-hardware/drivers/usbcon/microsoft-defined-usb-descriptors
-
+  }
+  else {
     if ( !(index < sizeof(string_desc_arr)/sizeof(string_desc_arr[0])) ) return NULL;
 
     const char* str = string_desc_arr[index];
