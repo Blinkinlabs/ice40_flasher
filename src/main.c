@@ -50,6 +50,16 @@ enum
 
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
+typedef struct
+{
+    uint8_t sck;
+    uint8_t cs;
+    uint8_t mosi;
+    uint8_t miso;
+} spi_pins_t;
+
+static spi_pins_t spi_pins;
+
 void led_blinking_task(void);
 
 void pins_init();
@@ -134,9 +144,8 @@ void set_pulls_masked(
 
 #define SPI_BITBANG_MAX_TRANSFER_SIZE (1024-8)
 
-void spi_bitbang(const uint8_t sck_pin,
-                 const uint8_t mosi_pin,
-                 const uint8_t miso_pin,
+void spi_bitbang(const spi_pins_t *pins,
+                 bool handle_cs,
                  const uint32_t bit_count,
                  uint8_t const *buf_out,
                  uint8_t *buf_in)
@@ -148,21 +157,28 @@ void spi_bitbang(const uint8_t sck_pin,
 
     memset(buf_in, 0, SPI_BITBANG_MAX_TRANSFER_SIZE);
 
+    if(handle_cs)
+        gpio_put(pins->cs, false);
+        
+
     for (uint32_t bit_index = 0; bit_index < bit_count; bit_index++)
     {
         const uint32_t byte_index = bit_index / 8;
         const uint8_t bit_offset = bit_index % 8;
 
-        gpio_put(mosi_pin, (buf_out[byte_index] << bit_offset) & 0x80);
-        gpio_put(sck_pin, true);
+        gpio_put(pins->mosi, (buf_out[byte_index] << bit_offset) & 0x80);
+        gpio_put(pins->sck, true);
 
-        if (gpio_get(miso_pin))
+        if (gpio_get(pins->miso))
         {
             buf_in[byte_index] |= (1 << (7 - bit_offset));
         }
 
-        gpio_put(sck_pin, false);
+        gpio_put(pins->sck, false);
     }
+
+    if(handle_cs)
+        gpio_put(pins->cs, true);
 }
 
 uint32_t adc_sample_input(uint8_t input)
@@ -199,16 +215,18 @@ void write_uint32(uint32_t val, uint8_t *buffer)
     buffer[3] = ((val >> 0) & 0xFF);
 }
 
+
 typedef enum
 {
-    FLASHER_REQUEST_LED_SET = 0x00,
-    FLASHER_REQUEST_PIN_DIRECTION_SET = 0x10,
-    FLASHER_REQUEST_PULLUPS_SET = 0x12,
-    FLASHER_REQUEST_PIN_VALUES_SET = 0x20,
-    FLASHER_REQUEST_PIN_VALUES_GET = 0x30,
-    FLASHER_REQUEST_SPI_BITBANG = 0x40,
-    FLASHER_REQUEST_ADC_READ = 0x50,
-    FLASHER_REQUEST_BOOTLOADER = 0xFF
+    FLASHER_REQUEST_PIN_DIRECTION_SET = 0x10,       // Configurure GPIO pin directions
+    FLASHER_REQUEST_PULLUPS_SET = 0x12,             // Configure GPIO pullups
+    FLASHER_REQUEST_PIN_VALUES_SET = 0x20,          // Set GPIO output values
+    FLASHER_REQUEST_PIN_VALUES_GET = 0x30,          // Get GPIO input values
+    FLASHER_REQUEST_SPI_BITBANG_CS = 0x41,          // SPI transaction with CS pin
+    FLASHER_REQUEST_SPI_BITBANG_NO_CS = 0x42,       // SPI transaction without CS pin
+    FLASHER_REQUEST_SPI_PINS_SET = 0x43,            // Configure SPI pins
+    FLASHER_REQUEST_ADC_READ = 0x50,                // Read ADC inputs
+    FLASHER_REQUEST_BOOTLOADER = 0xFF               // Jump to bootloader mode
 } flasher_request_t;
 
 static const uint8_t microsoft_os_compatible_id_desc[] = {
@@ -268,7 +286,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)in_buffer, (3*4));
             break;
 
-        case FLASHER_REQUEST_SPI_BITBANG:
+        case FLASHER_REQUEST_SPI_BITBANG_CS:
+        case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)bitbang_in_buffer, sizeof(bitbang_in_buffer));
             break;
 
@@ -280,12 +299,12 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     { // Host to device (OUT): Set up request to handle DATA stage
         switch (request->bRequest)
         {
-        // FLASHER_REQUEST_LED_SET = 0x00,
-
         case FLASHER_REQUEST_PIN_DIRECTION_SET:
         case FLASHER_REQUEST_PULLUPS_SET:
         case FLASHER_REQUEST_PIN_VALUES_SET:
-        case FLASHER_REQUEST_SPI_BITBANG:
+        case FLASHER_REQUEST_SPI_BITBANG_CS:
+        case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
+        case FLASHER_REQUEST_SPI_PINS_SET:
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, sizeof(out_buffer));
             break;
 
@@ -303,8 +322,6 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     { // Host to device (OUT): Handle data
         switch (request->bRequest)
         {
-        // FLASHER_REQUEST_LED_SET = 0x00,
-
         case FLASHER_REQUEST_PIN_DIRECTION_SET:
             gpio_set_dir_masked(
                 read_uint32(&out_buffer[0]) & PIN_MASK,
@@ -328,16 +345,36 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             break;
 
 
-        case FLASHER_REQUEST_SPI_BITBANG:
+        case FLASHER_REQUEST_SPI_BITBANG_CS:
             spi_bitbang(
-                out_buffer[0],
-                out_buffer[1],
-                out_buffer[2],
-                read_uint32(&out_buffer[3]),
-                &out_buffer[7],
+                &spi_pins,
+                true,
+                read_uint32(&out_buffer[0]),
+                &out_buffer[4],
                 bitbang_in_buffer
                 );
             
+            return true;
+            break;
+
+        case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
+            spi_bitbang(
+                &spi_pins,
+                false,
+                read_uint32(&out_buffer[0]),
+                &out_buffer[4],
+                bitbang_in_buffer
+                );
+            
+            return true;
+            break;
+
+        case FLASHER_REQUEST_SPI_PINS_SET:
+            spi_pins.sck = out_buffer[0];
+            spi_pins.cs = out_buffer[1];
+            spi_pins.mosi = out_buffer[2];
+            spi_pins.miso = out_buffer[3];
+
             return true;
             break;
 
