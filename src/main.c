@@ -50,6 +50,9 @@ enum
 
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
+#define BULK_TRANSFER_MAX_SIZE 2048
+#define SPI_BITBANG_MAX_TRANSFER_SIZE (BULK_TRANSFER_MAX_SIZE-8)
+
 typedef struct
 {
     uint8_t sck;
@@ -142,7 +145,6 @@ void set_pulls_masked(
     }
 }
 
-#define SPI_BITBANG_MAX_TRANSFER_SIZE (1024-8)
 
 void spi_bitbang(const spi_pins_t *pins,
                  bool handle_cs,
@@ -167,14 +169,15 @@ void spi_bitbang(const spi_pins_t *pins,
         const uint8_t bit_offset = bit_index % 8;
 
         gpio_put(pins->mosi, (buf_out[byte_index] << bit_offset) & 0x80);
-        gpio_put(pins->sck, true);
+
+        gpio_set_mask((1<<(pins->sck)));
 
         if (gpio_get(pins->miso))
         {
             buf_in[byte_index] |= (1 << (7 - bit_offset));
         }
 
-        gpio_put(pins->sck, false);
+        gpio_clr_mask((1<<(pins->sck)));
     }
 
     if(handle_cs)
@@ -242,9 +245,83 @@ static const uint8_t microsoft_os_compatible_id_desc[] = {
 	0,0,0,0,0,0 // Reserved
 };
 
-uint8_t out_buffer[1024];
-uint8_t in_buffer[1024];
-uint8_t bitbang_in_buffer[SPI_BITBANG_MAX_TRANSFER_SIZE];
+
+uint8_t out_buffer[BULK_TRANSFER_MAX_SIZE]; // Host->Device data
+uint8_t in_buffer[BULK_TRANSFER_MAX_SIZE];  // Holds Device->Host data
+
+uint8_t bitbang_in_buffer[SPI_BITBANG_MAX_TRANSFER_SIZE];   // Holds read values from last SPI transfer
+
+uint8_t data_in_buffer[BULK_TRANSFER_MAX_SIZE]; // Holds Host->Device data
+
+void tud_vendor_rx_cb(uint8_t itf) {
+	char c;
+	if (tud_vendor_n_available(itf))
+	{
+	    uint32_t count = tud_vendor_n_read(itf, data_in_buffer, sizeof(data_in_buffer));
+		if(count == 0)
+			return;
+
+		switch(data_in_buffer[0]) {
+    	    case FLASHER_REQUEST_PIN_DIRECTION_SET:
+    	        gpio_set_dir_masked(
+    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
+    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
+    	        return;
+    	        break;
+
+    	    case FLASHER_REQUEST_PULLUPS_SET: // set pullups/pulldowns
+    	        set_pulls_masked(
+    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
+    	            read_uint32(&data_in_buffer[5]) & PIN_MASK,
+    	            read_uint32(&data_in_buffer[9]) & PIN_MASK);
+    	        return;
+    	        break;
+    	        
+    	    case FLASHER_REQUEST_PIN_VALUES_SET: // set pin values
+    	        gpio_put_masked(
+    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
+    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
+    	        return;
+
+
+    	    case FLASHER_REQUEST_SPI_BITBANG_CS:
+    	        spi_bitbang(
+    	            &spi_pins,
+    	            true,
+    	            read_uint32(&data_in_buffer[1]),
+    	            &data_in_buffer[5],
+    	            bitbang_in_buffer
+    	            );
+    	        
+    	        return;
+    	        break;
+
+    	    case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
+    	        spi_bitbang(
+    	            &spi_pins,
+    	            false,
+    	            read_uint32(&data_in_buffer[1]),
+    	            &data_in_buffer[5],
+    	            bitbang_in_buffer
+    	            );
+    	        
+    	        return;
+    	        break;
+
+    	    case FLASHER_REQUEST_SPI_PINS_SET:
+    	        spi_pins.sck = data_in_buffer[1];
+    	        spi_pins.cs = data_in_buffer[2];
+    	        spi_pins.mosi = data_in_buffer[3];
+    	        spi_pins.miso = data_in_buffer[4];
+
+    	        return;
+    	        break;
+
+    	    default:
+    	        break;
+		}
+	}
+}
 
 // Invoked when a control transfer occurred on an interface of this class
 // Driver response accordingly to the request and the transfer stage (setup/data/ack)

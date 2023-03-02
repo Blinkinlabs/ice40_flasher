@@ -221,14 +221,47 @@ class ice40_flasher:
         except usb.core.USBError as e:
             pass
 
+def test_strings():
+    dev = usb.core.find(idVendor=0xcafe, idProduct=0x4010)
+
+    if dev.is_kernel_driver_active(0):
+        try:
+            dev.detach_kernel_driver(0)
+            print("kernel driver detached")
+        except usb.core.USBError as e:
+            sys.exit("Could not detach kernel driver: %s" % str(e))
+
+    dev.set_configuration()
+
+    expected_strings = {
+        0:None,
+        1:'Blinkinlabs',
+        2:'ICE40 programmer',
+        3:'123456'
+        }
+
+    found_strings = {}
+    for index in range(0,255):
+        try:
+            val = usb.util.get_string(dev, index)
+            found_strings[index] = val
+
+        except usb.core.USBError:
+            pass
+
+    for key, val in found_strings.items():
+        print('{:02x}'.format(key), val)
+
+    #assert(expected_strings == found_strings)
 
 if __name__ == '__main__':
     flasher = ice40_flasher()
-    print(flasher.gpio_get_all())
-    print(flasher.adc_read_all())
 
-    flasher.bootloader()
+    flasher.gpio_set_direction(7, True)
+    flasher.gpio_put(7, True)
+    flasher.gpio_put(7, False)
     exit(0)
+
 
     # for pin in range(10,13):
     #    flasher.gpio_set_direction(pin, True)

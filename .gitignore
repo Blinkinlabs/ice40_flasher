@@ -1,5 +1,6 @@
 build/
-venv/
+.venv/
 .vscode/
+__pycache__/
 
 *.swp
