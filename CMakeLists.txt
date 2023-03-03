@@ -26,9 +26,12 @@ add_compile_options(-Wall
 
 add_executable(main)
 
+pico_generate_pio_header(main ${CMAKE_CURRENT_LIST_DIR}/src/spi.pio)
+
 target_sources(main PUBLIC
         src/main.c
         src/usb_descriptors.c
+        src/pio_spi.c
         )
 
 # Make sure TinyUSB can find tusb_config.h
@@ -43,6 +46,7 @@ pico_add_extra_outputs(main)
 target_link_libraries(main PUBLIC
         pico_stdlib
         hardware_adc
+        hardware_pio
         tinyusb_device
         tinyusb_board
         )

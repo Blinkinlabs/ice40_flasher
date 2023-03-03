@@ -31,6 +31,7 @@
 #include "pico/bootrom.h"
 #include "bsp/board.h"
 #include "tusb.h"
+#include "pio_spi.h"
 
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
@@ -53,15 +54,14 @@ static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 #define BULK_TRANSFER_MAX_SIZE 2048
 #define SPI_BITBANG_MAX_TRANSFER_SIZE (BULK_TRANSFER_MAX_SIZE-8)
 
-typedef struct
-{
-    uint8_t sck;
-    uint8_t cs;
-    uint8_t mosi;
-    uint8_t miso;
-} spi_pins_t;
 
-static spi_pins_t spi_pins;
+pio_spi_inst_t spi = {
+    .pio = pio0,
+    .sm = 0,
+    .cs_pin = 0
+};
+
+uint pio_offset;
 
 void led_blinking_task(void);
 
@@ -72,6 +72,8 @@ int main(void)
 {
     board_init();
     tusb_init();
+
+    pio_offset = pio_add_program(spi.pio, &spi_cpha0_program);
 
     pins_init();
 
@@ -146,8 +148,7 @@ void set_pulls_masked(
 }
 
 
-void spi_bitbang(const spi_pins_t *pins,
-                 bool handle_cs,
+void spi_bitbang(bool handle_cs,
                  const uint32_t bit_count,
                  uint8_t const *buf_out,
                  uint8_t *buf_in)
@@ -160,28 +161,12 @@ void spi_bitbang(const spi_pins_t *pins,
     memset(buf_in, 0, SPI_BITBANG_MAX_TRANSFER_SIZE);
 
     if(handle_cs)
-        gpio_put(pins->cs, false);
+        gpio_put(spi.cs_pin, false);
         
-
-    for (uint32_t bit_index = 0; bit_index < bit_count; bit_index++)
-    {
-        const uint32_t byte_index = bit_index / 8;
-        const uint8_t bit_offset = bit_index % 8;
-
-        gpio_put(pins->mosi, (buf_out[byte_index] << bit_offset) & 0x80);
-
-        gpio_set_mask((1<<(pins->sck)));
-
-        if (gpio_get(pins->miso))
-        {
-            buf_in[byte_index] |= (1 << (7 - bit_offset));
-        }
-
-        gpio_clr_mask((1<<(pins->sck)));
-    }
+    pio_spi_write8_read8_blocking(&spi, buf_out, buf_in, byte_count);
 
     if(handle_cs)
-        gpio_put(pins->cs, true);
+        gpio_put(spi.cs_pin, true);
 }
 
 uint32_t adc_sample_input(uint8_t input)
@@ -246,82 +231,87 @@ static const uint8_t microsoft_os_compatible_id_desc[] = {
 };
 
 
+
+//uint8_t data_in_buffer[BULK_TRANSFER_MAX_SIZE]; // Holds Host->Device data
+//
+//void tud_vendor_rx_cb(uint8_t itf) {
+//	if (tud_vendor_n_available(itf))
+//	{
+//	    uint32_t count = tud_vendor_n_read(itf, data_in_buffer, sizeof(data_in_buffer));
+//		if(count == 0)
+//			return;
+//
+//		switch(data_in_buffer[0]) {
+//    	    case FLASHER_REQUEST_PIN_DIRECTION_SET:
+//    	        gpio_set_dir_masked(
+//    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
+//    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
+//    	        return;
+//    	        break;
+//
+//    	    case FLASHER_REQUEST_PULLUPS_SET: // set pullups/pulldowns
+//    	        set_pulls_masked(
+//    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
+//    	            read_uint32(&data_in_buffer[5]) & PIN_MASK,
+//    	            read_uint32(&data_in_buffer[9]) & PIN_MASK);
+//    	        return;
+//    	        break;
+//    	        
+//    	    case FLASHER_REQUEST_PIN_VALUES_SET: // set pin values
+//    	        gpio_put_masked(
+//    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
+//    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
+//    	        return;
+//
+//
+//    	    case FLASHER_REQUEST_SPI_BITBANG_CS:
+//    	        spi_bitbang(
+//    	            true,
+//    	            read_uint32(&data_in_buffer[1]),
+//    	            &data_in_buffer[5],
+//    	            bitbang_in_buffer
+//    	            );
+//    	        
+//    	        return;
+//    	        break;
+//
+//    	    case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
+//    	        spi_bitbang(
+//    	            false,
+//    	            read_uint32(&data_in_buffer[1]),
+//    	            &data_in_buffer[5],
+//    	            bitbang_in_buffer
+//    	            );
+//    	        
+//    	        return;
+//    	        break;
+//
+//    	    case FLASHER_REQUEST_SPI_PINS_SET:
+//                pio_spi_init(spi.pio, spi.sm, pio_offset,
+//                             8,       // 8 bits per SPI frame
+//                             31.25f,  // 1 MHz @ 125 clk_sys
+//                             false,   // CPHA = 0
+//                             false,   // CPOL = 0
+//                             data_in_buffer[1], //sck
+//                             dta_in_buffer[3], // mosi
+//                             data_in_buffer[4] // miso
+//                );
+//                spi.cs_pin = data_in_buffer[2]; // cs
+//
+//    	        return;
+//    	        break;
+//
+//    	    default:
+//    	        break;
+//		}
+//	}
+//}
+
+
 uint8_t out_buffer[BULK_TRANSFER_MAX_SIZE]; // Host->Device data
 uint8_t in_buffer[BULK_TRANSFER_MAX_SIZE];  // Holds Device->Host data
 
 uint8_t bitbang_in_buffer[SPI_BITBANG_MAX_TRANSFER_SIZE];   // Holds read values from last SPI transfer
-
-uint8_t data_in_buffer[BULK_TRANSFER_MAX_SIZE]; // Holds Host->Device data
-
-void tud_vendor_rx_cb(uint8_t itf) {
-	char c;
-	if (tud_vendor_n_available(itf))
-	{
-	    uint32_t count = tud_vendor_n_read(itf, data_in_buffer, sizeof(data_in_buffer));
-		if(count == 0)
-			return;
-
-		switch(data_in_buffer[0]) {
-    	    case FLASHER_REQUEST_PIN_DIRECTION_SET:
-    	        gpio_set_dir_masked(
-    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
-    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
-    	        return;
-    	        break;
-
-    	    case FLASHER_REQUEST_PULLUPS_SET: // set pullups/pulldowns
-    	        set_pulls_masked(
-    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
-    	            read_uint32(&data_in_buffer[5]) & PIN_MASK,
-    	            read_uint32(&data_in_buffer[9]) & PIN_MASK);
-    	        return;
-    	        break;
-    	        
-    	    case FLASHER_REQUEST_PIN_VALUES_SET: // set pin values
-    	        gpio_put_masked(
-    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
-    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
-    	        return;
-
-
-    	    case FLASHER_REQUEST_SPI_BITBANG_CS:
-    	        spi_bitbang(
-    	            &spi_pins,
-    	            true,
-    	            read_uint32(&data_in_buffer[1]),
-    	            &data_in_buffer[5],
-    	            bitbang_in_buffer
-    	            );
-    	        
-    	        return;
-    	        break;
-
-    	    case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
-    	        spi_bitbang(
-    	            &spi_pins,
-    	            false,
-    	            read_uint32(&data_in_buffer[1]),
-    	            &data_in_buffer[5],
-    	            bitbang_in_buffer
-    	            );
-    	        
-    	        return;
-    	        break;
-
-    	    case FLASHER_REQUEST_SPI_PINS_SET:
-    	        spi_pins.sck = data_in_buffer[1];
-    	        spi_pins.cs = data_in_buffer[2];
-    	        spi_pins.mosi = data_in_buffer[3];
-    	        spi_pins.miso = data_in_buffer[4];
-
-    	        return;
-    	        break;
-
-    	    default:
-    	        break;
-		}
-	}
-}
 
 // Invoked when a control transfer occurred on an interface of this class
 // Driver response accordingly to the request and the transfer stage (setup/data/ack)
@@ -336,6 +326,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     { // Device to host (IN)
         memset(in_buffer, 0, sizeof(in_buffer));
 
+	char c;
         switch (request->bRequest)
         {
 	case 0xF8:
@@ -424,7 +415,6 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 
         case FLASHER_REQUEST_SPI_BITBANG_CS:
             spi_bitbang(
-                &spi_pins,
                 true,
                 read_uint32(&out_buffer[0]),
                 &out_buffer[4],
@@ -436,7 +426,6 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 
         case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
             spi_bitbang(
-                &spi_pins,
                 false,
                 read_uint32(&out_buffer[0]),
                 &out_buffer[4],
@@ -447,10 +436,16 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             break;
 
         case FLASHER_REQUEST_SPI_PINS_SET:
-            spi_pins.sck = out_buffer[0];
-            spi_pins.cs = out_buffer[1];
-            spi_pins.mosi = out_buffer[2];
-            spi_pins.miso = out_buffer[3];
+            pio_spi_init(spi.pio, spi.sm, pio_offset,
+                         8,       // 8 bits per SPI frame
+                         (31.25f/out_buffer[4]),  // 1 MHz @ 125 clk_sys
+                         false,   // CPHA = 0
+                         false,   // CPOL = 0
+                         out_buffer[0], //sck
+                         out_buffer[2], // mosi
+                         out_buffer[3]  // miso
+            );
+            spi.cs_pin = out_buffer[1]; // cs
 
             return true;
             break;
