@@ -149,21 +149,31 @@ void set_pulls_masked(
 
 
 void spi_bitbang(bool handle_cs,
-                 const uint32_t bit_count,
+                 const uint32_t byte_count,
                  uint8_t const *buf_out,
                  uint8_t *buf_in)
 {
-    const uint32_t byte_count = (bit_count + 7)/8;
-
     if(byte_count > SPI_BITBANG_MAX_TRANSFER_SIZE)
         return;
 
-    memset(buf_in, 0, SPI_BITBANG_MAX_TRANSFER_SIZE);
+    if((buf_in == NULL) && (buf_out == NULL))
+        return;
+
+    if(buf_in != NULL)
+        memset(buf_in, 0, SPI_BITBANG_MAX_TRANSFER_SIZE);
 
     if(handle_cs)
         gpio_put(spi.cs_pin, false);
-        
-    pio_spi_write8_read8_blocking(&spi, buf_out, buf_in, byte_count);
+
+    if(buf_in == NULL) { // Write transaction
+        pio_spi_write8_blocking(&spi, buf_out, byte_count);
+    }
+    else if(buf_out == NULL) { // Read transaction
+        pio_spi_read8_blocking(&spi, buf_in, byte_count);
+    }
+    else { // Full-duplex transaction
+        pio_spi_write8_read8_blocking(&spi, buf_out, buf_in, byte_count);
+    }
 
     if(handle_cs)
         gpio_put(spi.cs_pin, true);
@@ -213,6 +223,7 @@ typedef enum
     FLASHER_REQUEST_SPI_BITBANG_CS = 0x41,          // SPI transaction with CS pin
     FLASHER_REQUEST_SPI_BITBANG_NO_CS = 0x42,       // SPI transaction without CS pin
     FLASHER_REQUEST_SPI_PINS_SET = 0x43,            // Configure SPI pins
+    FLASHER_REQUEST_SPI_CLKOUT = 0x44,              // Just toggle the clock
     FLASHER_REQUEST_ADC_READ = 0x50,                // Read ADC inputs
     FLASHER_REQUEST_BOOTLOADER = 0xFF               // Jump to bootloader mode
 } flasher_request_t;
@@ -229,83 +240,6 @@ static const uint8_t microsoft_os_compatible_id_desc[] = {
 	0,0,0,0,0,0,0,0,             // subCompatibleID
 	0,0,0,0,0,0 // Reserved
 };
-
-
-
-//uint8_t data_in_buffer[BULK_TRANSFER_MAX_SIZE]; // Holds Host->Device data
-//
-//void tud_vendor_rx_cb(uint8_t itf) {
-//	if (tud_vendor_n_available(itf))
-//	{
-//	    uint32_t count = tud_vendor_n_read(itf, data_in_buffer, sizeof(data_in_buffer));
-//		if(count == 0)
-//			return;
-//
-//		switch(data_in_buffer[0]) {
-//    	    case FLASHER_REQUEST_PIN_DIRECTION_SET:
-//    	        gpio_set_dir_masked(
-//    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
-//    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
-//    	        return;
-//    	        break;
-//
-//    	    case FLASHER_REQUEST_PULLUPS_SET: // set pullups/pulldowns
-//    	        set_pulls_masked(
-//    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
-//    	            read_uint32(&data_in_buffer[5]) & PIN_MASK,
-//    	            read_uint32(&data_in_buffer[9]) & PIN_MASK);
-//    	        return;
-//    	        break;
-//    	        
-//    	    case FLASHER_REQUEST_PIN_VALUES_SET: // set pin values
-//    	        gpio_put_masked(
-//    	            read_uint32(&data_in_buffer[1]) & PIN_MASK,
-//    	            read_uint32(&data_in_buffer[5]) & PIN_MASK);
-//    	        return;
-//
-//
-//    	    case FLASHER_REQUEST_SPI_BITBANG_CS:
-//    	        spi_bitbang(
-//    	            true,
-//    	            read_uint32(&data_in_buffer[1]),
-//    	            &data_in_buffer[5],
-//    	            bitbang_in_buffer
-//    	            );
-//    	        
-//    	        return;
-//    	        break;
-//
-//    	    case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
-//    	        spi_bitbang(
-//    	            false,
-//    	            read_uint32(&data_in_buffer[1]),
-//    	            &data_in_buffer[5],
-//    	            bitbang_in_buffer
-//    	            );
-//    	        
-//    	        return;
-//    	        break;
-//
-//    	    case FLASHER_REQUEST_SPI_PINS_SET:
-//                pio_spi_init(spi.pio, spi.sm, pio_offset,
-//                             8,       // 8 bits per SPI frame
-//                             31.25f,  // 1 MHz @ 125 clk_sys
-//                             false,   // CPHA = 0
-//                             false,   // CPOL = 0
-//                             data_in_buffer[1], //sck
-//                             dta_in_buffer[3], // mosi
-//                             data_in_buffer[4] // miso
-//                );
-//                spi.cs_pin = data_in_buffer[2]; // cs
-//
-//    	        return;
-//    	        break;
-//
-//    	    default:
-//    	        break;
-//		}
-//	}
-//}
 
 
 uint8_t out_buffer[BULK_TRANSFER_MAX_SIZE]; // Host->Device data
@@ -326,10 +260,9 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     { // Device to host (IN)
         memset(in_buffer, 0, sizeof(in_buffer));
 
-	char c;
         switch (request->bRequest)
         {
-	case 0xF8:
+	    case 0xF8:
 		// TODO: Check index
             memcpy(in_buffer,
 			    microsoft_os_compatible_id_desc,
@@ -373,6 +306,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
         case FLASHER_REQUEST_SPI_BITBANG_CS:
         case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
         case FLASHER_REQUEST_SPI_PINS_SET:
+        case FLASHER_REQUEST_SPI_CLKOUT:
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, sizeof(out_buffer));
             break;
 
@@ -435,7 +369,21 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             return true;
             break;
 
+        case FLASHER_REQUEST_SPI_CLKOUT:
+            spi_bitbang(
+                false,
+                read_uint32(&out_buffer[0]),
+                NULL,              
+                bitbang_in_buffer
+                );
+            
+            return true;
+            break;
+
         case FLASHER_REQUEST_SPI_PINS_SET:
+            if(out_buffer[4] == 0):
+                return false;
+
             pio_spi_init(spi.pio, spi.sm, pio_offset,
                          8,       // 8 bits per SPI frame
                          (31.25f/out_buffer[4]),  // 1 MHz @ 125 clk_sys

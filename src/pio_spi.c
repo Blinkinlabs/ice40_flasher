@@ -49,7 +49,7 @@ void __time_critical_func(pio_spi_read8_blocking)(const pio_spi_inst_t *spi, uin
     }
 }
 
-void __time_critical_func(pio_spi_write8_read8_blocking)(const pio_spi_inst_t *spi, uint8_t *src, uint8_t *dst,
+void __time_critical_func(pio_spi_write8_read8_blocking)(const pio_spi_inst_t *spi, const uint8_t *src, uint8_t *dst,
                                                          size_t len) {
     size_t tx_remain = len, rx_remain = len;
     io_rw_8 *txfifo = (io_rw_8 *) &spi->pio->txf[spi->sm];
