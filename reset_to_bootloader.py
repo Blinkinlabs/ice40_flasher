@@ -1,4 +1,4 @@
-from usb_test import ice40_flasher
+from usb_test import IceFlasher
 
-flasher = ice40_flasher()
+flasher = IceFlasher()
 flasher.bootloader()

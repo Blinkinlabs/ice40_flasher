@@ -49,10 +49,13 @@ enum
     BLINK_SUSPENDED = 2500,
 };
 
+
+static bool do_reset = false;
+
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
-#define BULK_TRANSFER_MAX_SIZE 2048
-#define SPI_BITBANG_MAX_TRANSFER_SIZE (BULK_TRANSFER_MAX_SIZE-8)
+#define BULK_TRANSFER_MAX_SIZE 2048 // Maximum control transfer data length
+#define SPI_MAX_TRANSFER_SIZE (BULK_TRANSFER_MAX_SIZE-8)
 
 
 pio_spi_inst_t spi = {
@@ -83,6 +86,10 @@ int main(void)
     {
         tud_task(); // tinyusb device task
         led_blinking_task();
+
+        if(do_reset) {
+            reset_usb_boot(0,0);
+        }
     }
 
     return 0;
@@ -147,20 +154,30 @@ void set_pulls_masked(
     }
 }
 
+uint32_t get_directions_all() {
+    uint32_t pin_directions = 0;
 
-void spi_bitbang(bool handle_cs,
+    for (int gpio = 0; gpio < PIN_COUNT; gpio++)
+    {
+        pin_directions |= (gpio_get_dir(gpio)) << gpio;
+    }
+
+    return pin_directions;
+}
+
+void spi_xfer(bool handle_cs,
                  const uint32_t byte_count,
                  uint8_t const *buf_out,
                  uint8_t *buf_in)
 {
-    if(byte_count > SPI_BITBANG_MAX_TRANSFER_SIZE)
+    if(byte_count > SPI_MAX_TRANSFER_SIZE)
         return;
 
     if((buf_in == NULL) && (buf_out == NULL))
         return;
 
     if(buf_in != NULL)
-        memset(buf_in, 0, SPI_BITBANG_MAX_TRANSFER_SIZE);
+        memset(buf_in, 0, SPI_MAX_TRANSFER_SIZE);
 
     if(handle_cs)
         gpio_put(spi.cs_pin, false);
@@ -216,17 +233,17 @@ void write_uint32(uint32_t val, uint8_t *buffer)
 
 typedef enum
 {
-    FLASHER_REQUEST_PIN_DIRECTION_SET = 0x10,       // Configurure GPIO pin directions
-    FLASHER_REQUEST_PULLUPS_SET = 0x12,             // Configure GPIO pullups
-    FLASHER_REQUEST_PIN_VALUES_SET = 0x20,          // Set GPIO output values
-    FLASHER_REQUEST_PIN_VALUES_GET = 0x30,          // Get GPIO input values
-    FLASHER_REQUEST_SPI_BITBANG_CS = 0x41,          // SPI transaction with CS pin
-    FLASHER_REQUEST_SPI_BITBANG_NO_CS = 0x42,       // SPI transaction without CS pin
-    FLASHER_REQUEST_SPI_PINS_SET = 0x43,            // Configure SPI pins
-    FLASHER_REQUEST_SPI_CLKOUT = 0x44,              // Just toggle the clock
-    FLASHER_REQUEST_ADC_READ = 0x50,                // Read ADC inputs
-    FLASHER_REQUEST_BOOTLOADER = 0xFF               // Jump to bootloader mode
-} flasher_request_t;
+    COMMAND_PIN_DIRECTION = 0x30,           // Configurure GPIO pin directions
+    COMMAND_PULLUPS = 0x31,                 // Configure GPIO pullups
+    COMMAND_PIN_VALUES = 0x32,              // Set GPIO output values
+    COMMAND_SPI_CONFIGURE = 0x40,           // Configure SPI pins
+    COMMAND_SPI_XFER = 0x41,                // SPI transaction with CS pin
+    COMMAND_SPI_CLKOUT = 0x42,              // Just toggle the clock
+    COMMAND_ADC_READ = 0x50,                // Read ADC inputs
+    COMMAND_BOOTLOADER = 0xE0,              // Jump to bootloader mode
+
+    COMMAND_MS_OS_DESCRIPTOR = 0xF8
+} command_t;
 
 static const uint8_t microsoft_os_compatible_id_desc[] = {
 	40, 0, 0, 0, // total length, 16 header + 24 function * 1
@@ -241,11 +258,10 @@ static const uint8_t microsoft_os_compatible_id_desc[] = {
 	0,0,0,0,0,0 // Reserved
 };
 
-
 uint8_t out_buffer[BULK_TRANSFER_MAX_SIZE]; // Host->Device data
 uint8_t in_buffer[BULK_TRANSFER_MAX_SIZE];  // Holds Device->Host data
 
-uint8_t bitbang_in_buffer[SPI_BITBANG_MAX_TRANSFER_SIZE];   // Holds read values from last SPI transfer
+uint8_t spi_in_buffer[SPI_MAX_TRANSFER_SIZE];   // Holds read values from last SPI transfer
 
 // Invoked when a control transfer occurred on an interface of this class
 // Driver response accordingly to the request and the transfer stage (setup/data/ack)
@@ -262,7 +278,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 
         switch (request->bRequest)
         {
-	    case 0xF8:
+	    case COMMAND_MS_OS_DESCRIPTOR:
 		// TODO: Check index
             memcpy(in_buffer,
 			    microsoft_os_compatible_id_desc,
@@ -275,21 +291,20 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 			    );
             break;
 
-        case FLASHER_REQUEST_PIN_VALUES_GET:
+        case COMMAND_PIN_VALUES:
             write_uint32(gpio_get_all() & PIN_MASK, &in_buffer[0]);
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)in_buffer, 4);
             break;
 
-        case FLASHER_REQUEST_ADC_READ:
+        case COMMAND_ADC_READ:
             write_uint32(adc_sample_input(0), &in_buffer[0]);
             write_uint32(adc_sample_input(1), &in_buffer[4]);
             write_uint32(adc_sample_input(2), &in_buffer[8]);
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)in_buffer, (3*4));
             break;
 
-        case FLASHER_REQUEST_SPI_BITBANG_CS:
-        case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
-            return tud_control_xfer(rhport, request, (void *)(uintptr_t)bitbang_in_buffer, sizeof(bitbang_in_buffer));
+        case COMMAND_SPI_XFER:
+            return tud_control_xfer(rhport, request, (void *)(uintptr_t)spi_in_buffer, sizeof(spi_in_buffer));
             break;
 
         default:
@@ -300,21 +315,19 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     { // Host to device (OUT): Set up request to handle DATA stage
         switch (request->bRequest)
         {
-        case FLASHER_REQUEST_PIN_DIRECTION_SET:
-        case FLASHER_REQUEST_PULLUPS_SET:
-        case FLASHER_REQUEST_PIN_VALUES_SET:
-        case FLASHER_REQUEST_SPI_BITBANG_CS:
-        case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
-        case FLASHER_REQUEST_SPI_PINS_SET:
-        case FLASHER_REQUEST_SPI_CLKOUT:
+        case COMMAND_PIN_DIRECTION:
+        case COMMAND_PULLUPS:
+        case COMMAND_PIN_VALUES:
+        case COMMAND_SPI_CONFIGURE:
+        case COMMAND_SPI_XFER:
+        case COMMAND_SPI_CLKOUT:
             return tud_control_xfer(rhport, request, (void *)(uintptr_t)out_buffer, sizeof(out_buffer));
             break;
 
-	case FLASHER_REQUEST_BOOTLOADER:
-            reset_usb_boot(0,0);
+	case COMMAND_BOOTLOADER:
+            do_reset = true;
             return true;
             break;
-
 
         default:
             break;
@@ -324,14 +337,14 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
     { // Host to device (OUT): Handle data
         switch (request->bRequest)
         {
-        case FLASHER_REQUEST_PIN_DIRECTION_SET:
+        case COMMAND_PIN_DIRECTION:
             gpio_set_dir_masked(
                 read_uint32(&out_buffer[0]) & PIN_MASK,
                 read_uint32(&out_buffer[4]) & PIN_MASK);
             return true;
             break;
 
-        case FLASHER_REQUEST_PULLUPS_SET: // set pullups/pulldowns
+        case COMMAND_PULLUPS: // set pullups/pulldowns
             set_pulls_masked(
                 read_uint32(&out_buffer[0]) & PIN_MASK,
                 read_uint32(&out_buffer[4]) & PIN_MASK,
@@ -339,48 +352,14 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             return true;
             break;
             
-        case FLASHER_REQUEST_PIN_VALUES_SET: // set pin values
+        case COMMAND_PIN_VALUES: // set pin values
             gpio_put_masked(
                 read_uint32(&out_buffer[0]) & PIN_MASK,
                 read_uint32(&out_buffer[4]) & PIN_MASK);
             return true;
             break;
 
-
-        case FLASHER_REQUEST_SPI_BITBANG_CS:
-            spi_bitbang(
-                true,
-                read_uint32(&out_buffer[0]),
-                &out_buffer[4],
-                bitbang_in_buffer
-                );
-            
-            return true;
-            break;
-
-        case FLASHER_REQUEST_SPI_BITBANG_NO_CS:
-            spi_bitbang(
-                false,
-                read_uint32(&out_buffer[0]),
-                &out_buffer[4],
-                bitbang_in_buffer
-                );
-            
-            return true;
-            break;
-
-        case FLASHER_REQUEST_SPI_CLKOUT:
-            spi_bitbang(
-                false,
-                read_uint32(&out_buffer[0]),
-                NULL,              
-                bitbang_in_buffer
-                );
-            
-            return true;
-            break;
-
-        case FLASHER_REQUEST_SPI_PINS_SET:
+        case COMMAND_SPI_CONFIGURE:
             if(out_buffer[4] == 0)
                 return false;
 
@@ -397,6 +376,30 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 
             return true;
             break;
+
+        case COMMAND_SPI_XFER:
+            spi_xfer(
+                out_buffer[0],  // CS
+                read_uint32(&out_buffer[1]),    // byte length
+                &out_buffer[5], // data
+                spi_in_buffer
+                );
+            
+            return true;
+            break;
+
+        case COMMAND_SPI_CLKOUT:
+            spi_xfer(
+                false,
+                read_uint32(&out_buffer[0]),
+                NULL,              
+                spi_in_buffer
+                );
+            
+            return true;
+            break;
+
+
 
         default:
             break;

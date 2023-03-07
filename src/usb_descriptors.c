@@ -37,6 +37,7 @@
 
 #define USB_VID   0xCafe
 #define USB_BCD   0x0200
+#define PROTOCOL_VERSION 0x0200
 
 //--------------------------------------------------------------------+
 // Device Descriptors
@@ -53,7 +54,7 @@ tusb_desc_device_t const desc_device =
 
     .idVendor           = USB_VID,
     .idProduct          = USB_PID,
-    .bcdDevice          = 0x0100,      // Device revision number
+    .bcdDevice          = PROTOCOL_VERSION,
 
     .iManufacturer      = 0x01,
     .iProduct           = 0x02,
