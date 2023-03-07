@@ -337,7 +337,7 @@ class ice40_flasher:
         """
         try:
             self._write(self.FLASHER_REQUEST_BOOTLOADER, bytes())
-        except usb.core.USBError:
+        except usb1.USBErrorIO:
             # We expect the device to disappear immediately, so mask
             # the resulting error
             pass

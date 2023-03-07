@@ -381,7 +381,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             break;
 
         case FLASHER_REQUEST_SPI_PINS_SET:
-            if(out_buffer[4] == 0):
+            if(out_buffer[4] == 0)
                 return false;
 
             pio_spi_init(spi.pio, spi.sm, pio_offset,
