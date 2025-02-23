@@ -1,0 +1,2 @@
+# Blinkinlabs iCE40 flasher
+SUBSYSTEM=="usb", ATTRS{idVendor}=="cafe", MODE="0666"
