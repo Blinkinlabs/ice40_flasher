@@ -224,8 +224,14 @@ class IceFlasher:
         toggle_cs -- (Optional) If true, toggle the CS line
         """
         max_chunk_size = self.SPI_MAX_TRANSFER_SIZE
+        cn = 0
+        cl = 0
+        print(f"total size:{len(buf)}")
         for i in range(0, len(buf), max_chunk_size):
             chunk = buf[i:i + max_chunk_size]
+            cl = cl+len(chunk)
+            cn = cn+1
+            print(f"chunk:{cn} len:{len(chunk)} total:{cl}")
             self._spi_xfer(
                 buf=chunk,
                 toggle_cs=toggle_cs,
@@ -245,8 +251,14 @@ class IceFlasher:
         ret = bytearray()
 
         max_chunk_size = self.SPI_MAX_TRANSFER_SIZE
+        cn = 0
+        cl = 0
+        print(f"total size:{len(buf)}")
         for i in range(0, len(buf), max_chunk_size):
             chunk = buf[i:i + max_chunk_size]
+            cl = cl+len(chunk)
+            cn = cn+1
+            print(f"chunk:{cn} len:{len(chunk)} total:{cl}")
             ret.extend(
                 self._spi_xfer(
                     buf=chunk,
