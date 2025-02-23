@@ -372,6 +372,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
                          out_buffer[2], // mosi
                          out_buffer[3]  // miso
             );
+	    // TODO: Configure CS Pin?
             spi.cs_pin = out_buffer[1]; // cs
 
             return true;

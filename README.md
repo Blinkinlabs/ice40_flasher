@@ -189,6 +189,8 @@ First, add a UDEV rule so that the device can be accessed by anyone:
 sudo cp 99-iceflasher.rules /etc/udev/rules.d/
 ```
 
+Then, set up the python environment and test that the device can be loaded:
+
 ```
 cd python_example
 python3 -m venv .venv

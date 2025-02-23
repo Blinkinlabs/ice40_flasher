@@ -27,7 +27,7 @@ docker-image:
 ${TARGET}:
 	docker ${COMMON} \
 		-it ${DOCKER_IMAGE_NAME} \
-        /usr/bin/bash -c "mkdir -p build; cd build; cmake ../; make -j12"
+        /usr/bin/bash -c "mkdir -p build; cd build; cmake ../ -DPICO_BOARD=pico2; make -j12"
 
 build: ${TARGET}
 
@@ -51,7 +51,7 @@ flash: ${TARGET}
 			-f interface/cmsis-dap.cfg \
 			-f target/rp2350.cfg \
 			-c "adapter speed 5000" \
-			-c "program main.elf verify ; reset ; exit"
+			-c "program build/main.elf verify ; reset ; exit"
 
 # This should work without --net=host ?
 debug-server:
@@ -75,14 +75,3 @@ debug-client:
 		/usr//bin/gdb-multiarch \
 		--se=main.elf \
 		-ex "target extended-remote localhost:3333"
-
-#		--se=arm-bootrom.elf \
-
-debug-client2:
-	docker ${COMMON} \
-		--mount type=bind,source=`pwd`/../pico-bootrom-rp2350,target=/home/graham/dev/amy/amy-bootrom/ \
-		--net=host \
-		-it ${DOCKER_IMAGE_NAME} \
-		/usr//bin/gdb-multiarch \
-		--se=arm-bootrom.elf \
-		-ex "target extended-remote localhost:3334"
