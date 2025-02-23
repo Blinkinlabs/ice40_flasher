@@ -164,27 +164,35 @@ Data packet format:
 
 ### Bootloader
 
-This command is used to put the device in bootloader mode. No data is sent during this 
+This command is used to put the device in bootloader mode. No data is sent during this command.
 
 ## Building the firmware
 
-First, install the [Rasberry Pi Pico SDK](https://github.com/raspberrypi/pico-sdk.git):
+A docker image is provided to build the firmware in an isolated environment. To use it, first install docker, then:
 
-    sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
-    cd ~
-    git clone https://github.com/raspberrypi/pico-sdk.git
-    cd pico-sdk
-    git submodule update --init
+```
+cd docker
+make docker-image
+make build
+```
 
-Then, clone and build this repository:
-
-    cd ~
-    git clone https://github.com/Blinkinlabs/ice40_flasher
-    cd ice40_flasher
-    export PICO_SDK_PATH=~/pico-sdk
-    mkdir build
-    cd build
-    cmake ..
-    make
+This sh
 
 Finally, load the firmware onto the Pico using the instructions in the [usage](https://github.com/Blinkinlabs/ice40_flasher#usage) section.
+
+
+## Running the python test
+
+First, add a UDEV rule so that the device can be accessed by anyone:
+
+```
+sudo cp 99-iceflasher.rules /etc/udev/rules.d/
+```
+
+```
+cd python_example
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+./usb_test.py
+```

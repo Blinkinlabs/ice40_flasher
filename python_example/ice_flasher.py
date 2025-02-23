@@ -331,6 +331,3 @@ class IceFlasher:
 if __name__ == '__main__':
     flasher = IceFlasher()
     flasher.close()
-
-    flasher = IceFlasher()
-    flasher.close()
