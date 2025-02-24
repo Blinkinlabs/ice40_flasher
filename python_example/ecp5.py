@@ -65,14 +65,11 @@ flasher.spi_configure(pins['SCK'], pins['CS'], pins['MOSI'],pins['MISO'], 10)
 
 # From: 6.2.4. Slave SPI Configuration Flow Diagram:
 
+flasher.gpio_put(pins['PROGRAMN'], False)       # Step 0: reset
 flasher.gpio_set_direction(pins['PROGRAMN'], True)
-for i in range(0,10):
-    flasher.gpio_put(pins['PROGRAMN'], False)
-    time.sleep(.1)
-    flasher.gpio_put(pins['PROGRAMN'], True)
-    time.sleep(.1)
 flasher.gpio_set_direction(pins['PROGRAMN'], False)
-exit(1)
+
+time.sleep(0.05)                                # Step 1
 
 # From ECP5 and ECP5-5G sysCONFIG User Guide, Table B.5. ECP5 and ECP5-5G Device ID:
 # IDCODE for LFE5U-85 should be 0x41113043
