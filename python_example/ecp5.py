@@ -2,31 +2,54 @@ import ice_flasher
 import struct
 import time
 
-def class_a(fl, opcode, ret_len):
-    cmd = bytearray(1+3+ret_len)
-    cmd[0] = opcode
-    ret = fl.spi_rxtx(cmd)
-    return ret[4:]
+def _wait_busy(fl, timeout=4):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        ret = run_command(fl,'LSC_CHECK_BUSY')
+        if ret == b'\x00':
+            return
 
-class_a_commands = {
-    'READ_ID':0xE0,
-    'LSC_READ_STATUS':0x3C,
-    }
+    raise ValueError('Timeout!')
 
-def class_c(fl, opcode):
-    cmd = bytearray(1+3)
-    cmd[0] = opcode
-    fl.spi_rxtx(cmd)
+commands = {
+        'READ_ID':              {'opcode':0xE0,'class':'A','ret_len':4},
+        'LSC_READ_STATUS':      {'opcode':0x3C,'class':'A','ret_len':4},
+        'LSC_CHECK_BUSY':       {'opcode':0xF0,'class':'A','ret_len':1},
+        'LSC_REFRESH':          {'opcode':0x79,'class':'D'},
+        'ISC_ENABLE':           {'opcode':0xC6,'class':'C'},
+        'ISC_DISABLE':          {'opcode':0x26,'class':'C'},
+        'LSC_BITSTREAM_BURST':  {'opcode':0x7A,'class':'B'},
+        }
 
-class_c_commands = {
-    'ISC_ENABLE':0xC6,
-    'ISC_DISABLE':0x26,
-    'LSC_BITSTREAM_BURST':0x7A,
-    }
+def run_command(fl, name, tx_data=None):
+    command = commands[name]
 
+    if command['class'] == 'A':
+        buf = bytearray(1+3+command['ret_len'])
+        buf[0] = command['opcode']
+        ret = fl.spi_rxtx(buf)
+        return ret[4:]
 
+    elif command['class'] == 'B':
+        buf = bytearray(1+3)
+        buf[0] = command['opcode']
+        buf.extend(tx_data)
+        fl.spi_rxtx(buf)
 
-flasher = ice_flasher.IceFlasher()
+    elif command['class'] == 'C':
+        buf = bytearray(1+3)
+        buf[0] = command['opcode']
+        fl.spi_rxtx(buf)
+
+    elif command['class'] == 'D':
+        buf = bytearray(1+3)
+        buf[0] = command['opcode']
+        fl.spi_rxtx(buf)
+        _wait_busy(fl)
+
+    else:
+        raise ValueError(f"Invalid command class:{command['class']}")
+
 
 pins = {
         'SCK':10,
@@ -36,45 +59,34 @@ pins = {
         'PROGRAMN':14,
         }
 
-flasher.spi_configure(pins['SCK'], pins['CS'], pins['MOSI'],pins['MISO'], 1)
-flasher.gpio_set_direction(pins['CS'], True)
-flasher.gpio_put(pins['CS'], True)
+flasher = ice_flasher.IceFlasher()
 
-#flasher.gpio_put(pins['PROGRAMN'], False)
-#flasher.gpio_set_direction(pins['PROGRAMN'], True)
-#time.sleep(.1)
-#flasher.gpio_set_direction(pins['PROGRAMN'], False)
-
-#class_c(flasher, 0x79) # refresh
-#time.sleep(2)
+flasher.spi_configure(pins['SCK'], pins['CS'], pins['MOSI'],pins['MISO'], 10)
 
 # From: 6.2.4. Slave SPI Configuration Flow Diagram:
 
-### 2-3 Read ID
+flasher.gpio_set_direction(pins['PROGRAMN'], True)
+for i in range(0,10):
+    flasher.gpio_put(pins['PROGRAMN'], False)
+    time.sleep(.1)
+    flasher.gpio_put(pins['PROGRAMN'], True)
+    time.sleep(.1)
+flasher.gpio_set_direction(pins['PROGRAMN'], False)
+exit(1)
+
 # From ECP5 and ECP5-5G sysCONFIG User Guide, Table B.5. ECP5 and ECP5-5G Device ID:
 # IDCODE for LFE5U-85 should be 0x41113043
-chip_id = class_a(flasher, class_a_commands['READ_ID'], 4)
+chip_id = run_command(flasher,'READ_ID')        # Step 2-3
 if struct.unpack('>I', chip_id)[0] != 0x41113043:
     raise ValueError(f"read bad id: {hex(struct.unpack('>I', chip_id)[0])}")
 
-### 4 ISC_ENABLE
-class_c(flasher, class_c_commands['ISC_ENABLE'])
+run_command(flasher,'ISC_ENABLE')               # Step 4
 
-### 5 LSC_BITSTREAM_BURST
-class_c(flasher, class_c_commands['LSC_BITSTREAM_BURST'])
+with open('blink.bit', 'rb') as f:              # Steps 5-6
+    run_command(flasher,'LSC_BITSTREAM_BURST',tx_data=f.read())
 
-### 6 Clock in bitstream
-flasher.gpio_put(pins['CS'], False)
-
-with open('blink.bit', 'rb') as f:
-    flasher.spi_rxtx(f.read(), False)
-
-flasher.gpio_put(pins['CS'], True)
-
-### 7 Check status register
-status = class_a(flasher, class_a_commands['LSC_READ_STATUS'], 4)
+status = run_command(flasher,'LSC_READ_STATUS') # Step 7
 print('Status:', ' '.join([f"{x:02X}" for x in status]))
 
-### 8 Clock in ISC_DISABLE
-class_c(flasher, class_c_commands['ISC_DISABLE'])
+run_command(flasher,'ISC_DISABLE')              # Step 8
 

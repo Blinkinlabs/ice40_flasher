@@ -213,6 +213,14 @@ class IceFlasher:
 
         self._write(self.COMMAND_SPI_CONFIGURE, msg)
 
+        self.cs_pin = cs_pin
+
+        # TODO: move this into the firmware
+        self.gpio_set_direction(cs_pin, True)
+        self.gpio_put(cs_pin, True)
+
+    # TODO: Combine this with spi_rxtx
+    # TODO: Back-to-back writes are dropped/crash driver on Linux
     def spi_write(
             self,
             buf: bytes,
@@ -224,14 +232,10 @@ class IceFlasher:
         toggle_cs -- (Optional) If true, toggle the CS line
         """
         max_chunk_size = self.SPI_MAX_TRANSFER_SIZE
-        cn = 0
-        cl = 0
-        print(f"total size:{len(buf)}")
         for i in range(0, len(buf), max_chunk_size):
             chunk = buf[i:i + max_chunk_size]
-            cl = cl+len(chunk)
-            cn = cn+1
-            print(f"chunk:{cn} len:{len(chunk)} total:{cl}")
+
+            # Note: cs will toggle multiple times if sending chunks.
             self._spi_xfer(
                 buf=chunk,
                 toggle_cs=toggle_cs,
@@ -248,21 +252,32 @@ class IceFlasher:
         toggle_cs -- (Optional) If true, toggle the CS line
         """
 
-        ret = bytearray()
 
         max_chunk_size = self.SPI_MAX_TRANSFER_SIZE
-        cn = 0
-        cl = 0
-        print(f"total size:{len(buf)}")
-        for i in range(0, len(buf), max_chunk_size):
-            chunk = buf[i:i + max_chunk_size]
-            cl = cl+len(chunk)
-            cn = cn+1
-            print(f"chunk:{cn} len:{len(chunk)} total:{cl}")
-            ret.extend(
-                self._spi_xfer(
-                    buf=chunk,
-                    toggle_cs=toggle_cs))
+
+        if len(buf) <= max_chunk_size:
+            ret = self._spi_xfer(
+                    buf=buf,
+                    toggle_cs=toggle_cs)
+
+        else:
+            ret = bytearray()
+
+            # TODO: To reduce the number of USB transfers, add 'starting' and
+            #       'ending' options to toggle_cs parameter.
+            if toggle_cs:
+                self.gpio_put(self.cs_pin, False)
+
+            for i in range(0, len(buf), max_chunk_size):
+                chunk = buf[i:i + max_chunk_size]
+
+                ret.extend(
+                    self._spi_xfer(
+                        buf=chunk,
+                        toggle_cs=False))
+
+            if toggle_cs:
+                self.gpio_put(self.cs_pin, True)
 
         return bytes(ret)
 
