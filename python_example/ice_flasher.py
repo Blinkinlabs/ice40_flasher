@@ -268,7 +268,13 @@ class IceFlasher:
             if toggle_cs:
                 self.gpio_put(self.cs_pin, False)
 
+            last_percent = 0
             for i in range(0, len(buf), max_chunk_size):
+                percent = int(i/len(buf)*100)
+                if percent > last_percent:
+                    print(f" writing, {int(i/len(buf)*100)}% ({i}/{len(buf)})", flush=True)
+                    last_percent = percent
+
                 chunk = buf[i:i + max_chunk_size]
 
                 ret.extend(
