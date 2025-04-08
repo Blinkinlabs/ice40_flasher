@@ -27,7 +27,7 @@ docker-image:
 ${TARGET}:
 	docker ${COMMON} \
 		-it ${DOCKER_IMAGE_NAME} \
-        /usr/bin/bash -c "mkdir -p build; cd build; cmake ../ -DPICO_BOARD=pico2; make -j12"
+        /usr/bin/bash -c "mkdir -p build; cd build; cmake ../ -DPICO_BOARD=rp2350b_dev; make -j12"
 
 build: ${TARGET}
 

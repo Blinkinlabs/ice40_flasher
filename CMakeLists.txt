@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.12)
 
+set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/boards)
+
 # Pull in SDK (must be before project)
 #include(pico_sdk_import.cmake)
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
-
 
 project(pico_examples C CXX ASM)
 set(CMAKE_C_STANDARD 11)
@@ -13,7 +14,9 @@ if (PICO_SDK_VERSION_STRING VERSION_LESS "2.0.0")
     message(FATAL_ERROR "Raspberry Pi Pico SDK version 2.0.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
 endif()
 
+
 set(PICO_EXAMPLES_PATH ${PROJECT_SOURCE_DIR})
+
 
 # Initialize the SDK
 pico_sdk_init()
