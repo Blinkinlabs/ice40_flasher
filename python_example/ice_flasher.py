@@ -128,7 +128,7 @@ class IceFlasher:
         pin -- GPIO pin number
         value -- True: Set pin as output, False: set pin as input
         """
-        msg = struct.pack('>II',
+        msg = struct.pack('>QQ',
                           (1 << pin),
                           ((1 if direction else 0) << pin),
                           )
@@ -147,7 +147,7 @@ class IceFlasher:
         pullup -- True: Enable pullup, False: Disable pullup
         pulldown -- True: Enable pulldown, False: Disable pulldown
         """
-        msg = struct.pack('>III',
+        msg = struct.pack('>QQQ',
                           (1 << pin),
                           ((1 if pullup else 0) << pin),
                           ((1 if pulldown else 0) << pin),
@@ -162,7 +162,7 @@ class IceFlasher:
         pin -- GPIO pin number
         val -- True: High, False: Low
         """
-        msg = struct.pack('>II',
+        msg = struct.pack('>QQ',
                           1 << pin,
                           (1 if val else 0) << pin,
                           )
@@ -172,7 +172,7 @@ class IceFlasher:
     def gpio_get_all(self) -> int:
         """Read the input levels of all GPIO pins"""
         msg_in = self._read(self.COMMAND_PIN_VALUES, 4)
-        [gpio_states] = struct.unpack('>I', msg_in)
+        [gpio_states] = struct.unpack('>Q', msg_in)
 
         return gpio_states
 

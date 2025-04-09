@@ -58,17 +58,17 @@ static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 #define SPI_MAX_TRANSFER_SIZE (BULK_TRANSFER_MAX_SIZE-8)
 
 
-pio_spi_inst_t spi = {
+static pio_spi_inst_t spi = {
     .pio = pio0,
     .sm = 0,
     .cs_pin = 0
 };
 
-uint pio_offset;
+static uint pio_offset;
 
-void led_blinking_task(void);
+static void led_blinking_task(void);
 
-void pins_init();
+static void pins_init();
 
 /*------------- MAIN -------------*/
 int main(void)
@@ -126,46 +126,43 @@ void tud_resume_cb(void)
     blink_interval_ms = BLINK_MOUNTED;
 }
 
-#define PIN_COUNT 32 // PIN_MASK is 32 bits, so that's the max number of pins available
-#define PIN_MASK (0b00011100011111111111111111111111)
-// #define PIN_MASK ((1<<PIN_COUNT) - 1)
-// #define PIN_MASK (0xFFFFFFFF)
+#define PIN_COUNT 48
+#define PIN_MASK (((uint64_t)1<<PIN_COUNT) - 1)
 
-void pins_init()
+static void pins_init()
 {
-    gpio_init_mask(PIN_MASK);
+    //gpio_init_mask(PIN_MASK);
+    //no gpio_init_mask64?
+    for (int gpio = 0; gpio < PIN_COUNT; gpio++)
+    {
+        if (!(PIN_MASK & ((uint64_t)1 << gpio)))
+            continue;
+
+        gpio_init(gpio);
+    }
 }
 
 //! @brief Set the pull-up state for the gpios specified in the pinmask
-void set_pulls_masked(
-    const uint32_t mask,
-    const uint32_t ups,
-    const uint32_t downs)
+static void set_pulls_masked64(
+    const uint64_t mask,
+    const uint64_t ups,
+    const uint64_t downs)
 {
     for (int gpio = 0; gpio < PIN_COUNT; gpio++)
     {
-        if (!(PIN_MASK & (1 << gpio)))
+        const uint64_t pin_flag = (uint64_t)1 << gpio;
+
+        if (!(PIN_MASK & pin_flag))
             continue;
 
-        if (mask & (1 << gpio))
+        if (mask & pin_flag)
         {
-            gpio_set_pulls(gpio, ups & (1 << gpio), downs & (1 << gpio));
+            gpio_set_pulls(gpio, ups & pin_flag, downs & pin_flag);
         }
     }
 }
 
-uint32_t get_directions_all() {
-    uint32_t pin_directions = 0;
-
-    for (int gpio = 0; gpio < PIN_COUNT; gpio++)
-    {
-        pin_directions |= (gpio_get_dir(gpio)) << gpio;
-    }
-
-    return pin_directions;
-}
-
-void spi_xfer(bool handle_cs,
+static void spi_xfer(bool handle_cs,
                  const uint32_t byte_count,
                  uint8_t const *buf_out,
                  uint8_t *buf_in)
@@ -196,7 +193,8 @@ void spi_xfer(bool handle_cs,
         gpio_put(spi.cs_pin, true);
 }
 
-uint32_t adc_sample_input(uint8_t input)
+// TODO
+static uint32_t adc_sample_input(uint8_t input)
 {
     if (input > 3)
     {
@@ -210,7 +208,7 @@ uint32_t adc_sample_input(uint8_t input)
 
     // 12-bit conversion, assume max value == ADC_VREF == 3.3 V
     const uint32_t conversion_factor = 3300000 / (1 << 12); // microvolts per sample
-    uint16_t result = adc_read();
+    const uint16_t result = adc_read();
 
     return result * conversion_factor;
 }
@@ -218,17 +216,47 @@ uint32_t adc_sample_input(uint8_t input)
 uint32_t read_uint32(uint8_t const *buffer)
 {
     const uint32_t val =
-        (*(buffer + 0) << 24) + (*(buffer + 1) << 16) + (*(buffer + 2) << 8) + (*(buffer + 3) << 0);
+        (*(buffer + 0) << 24)
+        + (*(buffer + 1) << 16)
+        + (*(buffer + 2) << 8)
+        + (*(buffer + 3) << 0);
     return val;
 }
 
-void write_uint32(uint32_t val, uint8_t *buffer)
+void write_uint32(uint64_t val, uint8_t *buffer)
 {
     buffer[0] = ((val >> 24) & 0xFF);
     buffer[1] = ((val >> 16) & 0xFF);
     buffer[2] = ((val >> 8) & 0xFF);
     buffer[3] = ((val >> 0) & 0xFF);
 }
+
+uint64_t read_uint64(uint8_t const *buffer)
+{
+    const uint64_t val =
+        ((uint64_t)*(buffer + 0) << 56)
+        + ((uint64_t)*(buffer + 1) << 48)
+        + ((uint64_t)*(buffer + 2) << 40)
+        + ((uint64_t)*(buffer + 3) << 32)
+        + ((uint64_t)*(buffer + 4) << 24)
+        + ((uint64_t)*(buffer + 5) << 16)
+        + ((uint64_t)*(buffer + 6) << 8)
+        + ((uint64_t)*(buffer + 7) << 0);
+    return val;
+}
+
+void write_uint64(uint64_t val, uint8_t *buffer)
+{
+    buffer[0] = ((val >> 56) & 0xFF);
+    buffer[1] = ((val >> 48) & 0xFF);
+    buffer[2] = ((val >> 40) & 0xFF);
+    buffer[3] = ((val >> 32) & 0xFF);
+    buffer[4] = ((val >> 24) & 0xFF);
+    buffer[5] = ((val >> 16) & 0xFF);
+    buffer[6] = ((val >> 8) & 0xFF);
+    buffer[7] = ((val >> 0) & 0xFF);
+}
+
 
 
 typedef enum
@@ -258,10 +286,10 @@ static const uint8_t microsoft_os_compatible_id_desc[] = {
 	0,0,0,0,0,0 // Reserved
 };
 
-uint8_t out_buffer[BULK_TRANSFER_MAX_SIZE]; // Host->Device data
-uint8_t in_buffer[BULK_TRANSFER_MAX_SIZE];  // Holds Device->Host data
+static uint8_t out_buffer[BULK_TRANSFER_MAX_SIZE]; // Host->Device data
+static uint8_t in_buffer[BULK_TRANSFER_MAX_SIZE];  // Holds Device->Host data
 
-uint8_t spi_in_buffer[SPI_MAX_TRANSFER_SIZE];   // Holds read values from last SPI transfer
+static uint8_t spi_in_buffer[SPI_MAX_TRANSFER_SIZE];   // Holds read values from last SPI transfer
 
 // Invoked when a control transfer occurred on an interface of this class
 // Driver response accordingly to the request and the transfer stage (setup/data/ack)
@@ -292,8 +320,8 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
             break;
 
         case COMMAND_PIN_VALUES:
-            write_uint32(gpio_get_all() & PIN_MASK, &in_buffer[0]);
-            return tud_control_xfer(rhport, request, (void *)(uintptr_t)in_buffer, 4);
+            write_uint64(gpio_get_all64() & PIN_MASK, &in_buffer[0]);
+            return tud_control_xfer(rhport, request, (void *)(uintptr_t)in_buffer, 8);
             break;
 
         case COMMAND_ADC_READ:
@@ -338,24 +366,24 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
         switch (request->bRequest)
         {
         case COMMAND_PIN_DIRECTION:
-            gpio_set_dir_masked(
-                read_uint32(&out_buffer[0]) & PIN_MASK,
-                read_uint32(&out_buffer[4]) & PIN_MASK);
+            gpio_set_dir_masked64(
+                read_uint64(&out_buffer[0]) & PIN_MASK,
+                read_uint64(&out_buffer[8]) & PIN_MASK);
             return true;
             break;
 
         case COMMAND_PULLUPS: // set pullups/pulldowns
-            set_pulls_masked(
-                read_uint32(&out_buffer[0]) & PIN_MASK,
-                read_uint32(&out_buffer[4]) & PIN_MASK,
-                read_uint32(&out_buffer[8]) & PIN_MASK);
+            set_pulls_masked64(
+                read_uint64(&out_buffer[0]) & PIN_MASK,
+                read_uint64(&out_buffer[8]) & PIN_MASK,
+                read_uint64(&out_buffer[16]) & PIN_MASK);
             return true;
             break;
             
         case COMMAND_PIN_VALUES: // set pin values
-            gpio_put_masked(
-                read_uint32(&out_buffer[0]) & PIN_MASK,
-                read_uint32(&out_buffer[4]) & PIN_MASK);
+            gpio_put_masked64(
+                read_uint64(&out_buffer[0]) & PIN_MASK,
+                read_uint64(&out_buffer[8]) & PIN_MASK);
             return true;
             break;
 
@@ -417,7 +445,7 @@ bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_requ
 //--------------------------------------------------------------------+
 // BLINKING TASK
 //--------------------------------------------------------------------+
-void led_blinking_task(void)
+static void led_blinking_task(void)
 {
     static uint32_t start_ms = 0;
     static bool led_state = false;
