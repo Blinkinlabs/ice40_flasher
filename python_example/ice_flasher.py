@@ -6,24 +6,6 @@ from typing import List, Any
 
 import usb1  # type: ignore
 
-
-# def processReceivedData(transfer):
-#    #    print('got rx data',
-#           transfer.getStatus(),
-#           transfer.getActualLength())
-#
-#    if transfer.getStatus() != usb1.TRANSFER_COMPLETED:
-#        # Transfer did not complete successfully, there is no
-#        # data to read. This example does not resubmit transfers
-#        # on errors. You may want to resubmit in some cases (timeout,
-#        # ...).
-#        return
-#    data = transfer.getBuffer()[:transfer.getActualLength()]
-#    # Process data...
-#    # Resubmit transfer once data is processed.
-# transfer.submit()
-
-
 class IceFlasher:
     """ iCE40 programming tool based on an RPi Pico """
 
@@ -58,7 +40,7 @@ class IceFlasher:
 
         # Check the device firmware version
         bcd_device = self.handle.getDevice().getbcdDevice()
-        if bcd_device != 0x0200:
+        if bcd_device != 0x0300:
             raise ValueError(
                 'Pico firmware version out of date- please upgrade it!')
 
@@ -171,7 +153,7 @@ class IceFlasher:
 
     def gpio_get_all(self) -> int:
         """Read the input levels of all GPIO pins"""
-        msg_in = self._read(self.COMMAND_PIN_VALUES, 4)
+        msg_in = self._read(self.COMMAND_PIN_VALUES, 8)
         [gpio_states] = struct.unpack('>Q', msg_in)
 
         return gpio_states

@@ -37,7 +37,7 @@
 
 #define USB_VID   0xCafe
 #define USB_BCD   0x0200
-#define PROTOCOL_VERSION 0x0200
+#define PROTOCOL_VERSION 0x0300
 
 //--------------------------------------------------------------------+
 // Device Descriptors
