@@ -6,7 +6,7 @@
 # * openocd (rpi pico version) in /usr/local/
 # * pico examples in /pico/pico-examples
 
-FROM docker.io/library/debian:12 AS base
+FROM docker.io/library/debian:13 AS base
 
 RUN apt-get -qq update -y
 
@@ -33,23 +33,24 @@ RUN DEBIAN_FRONTEND=noninteractive \
             texinfo \
             libtool \
             libftdi-dev \
-            pkg-config
+            pkg-config \
+	    libjim-dev
 
 WORKDIR /pico
-RUN git clone https://github.com/raspberrypi/pico-sdk.git --branch 2.1.1
+RUN git clone https://github.com/raspberrypi/pico-sdk.git --branch 2.2.0
 WORKDIR /pico/pico-sdk
 RUN git submodule update --init
 
 ENV PICO_SDK_PATH=/pico/pico-sdk
 
 WORKDIR /pico
-RUN git clone https://github.com/raspberrypi/picotool.git --branch 2.1.1
+RUN git clone https://github.com/raspberrypi/picotool.git --branch 2.2.0
 WORKDIR /pico/picotool/build
 RUN cmake ../
 RUN make && make install
 
 WORKDIR /pico
-RUN git clone https://github.com/raspberrypi/openocd.git --depth=1 --branch sdk-2.0.0
+RUN git clone https://github.com/raspberrypi/openocd.git --depth=1 --branch sdk-2.2.0
 WORKDIR /pico/openocd
 RUN ./bootstrap && \
     ./configure --prefix=/usr/local && \
@@ -59,5 +60,5 @@ RUN ./bootstrap && \
 ENV PATH="$PATH:/usr/local/bin"
 
 WORKDIR /pico
-RUN git clone https://github.com/raspberrypi/pico-examples.git --branch sdk-2.1.1
+RUN git clone https://github.com/raspberrypi/pico-examples.git --branch sdk-2.2.0
 
